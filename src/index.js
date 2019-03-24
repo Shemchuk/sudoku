@@ -1,140 +1,384 @@
-//module.exports = function solveSudoku(matrix) {
-function solveSudoku(matrix) {
-  // your solution
-  //let arr = [].concat(...matrix);
-  // console.log("matrix to linear \n", JSON.stringify(arr));
-  console.log(matrix);
+module.exports = function solveSudoku(matrix) {
+  //source from here: https://habr.com/ru/post/113837/
 
-  let set = [];
+  Sudoku = function (arr) {
+    let solved = [];
+    let steps = 0;
+    let backtracking_call = 0;
 
+    initSolved(arr);
+    solve();
 
-  function createSet() {
-    for (let i = 0; i < 9; i++) {
-      for (let j = 0; j < 9; j++) {
-        // let i = 6;
-        // let j = 2;
-        let r = Math.floor(i / 3) * 3;
-        let c = Math.floor(j / 3) * 3;//(j % 3) * 3;
-        //console.log(`r = ${r}  c = ${c}`);
-        set[i] = [];
-        set[i][j] = new Set();
-
-        // console.log('Elements by column j');
-        for (let ii = 0; ii < 9; ii++) {
-          set[i][j].add(matrix[ii][j]); //добавляем в множество все элементы столбца j
-          //console.log(matrix[ii][j]);
-        }
-
-        // console.log('Elements by row i');
-        for (let jj = 0; jj < 9; jj++) {
-          set[i][j].add(matrix[i][jj]); //добавляем в множество все элементы строки i
-          // console.log(matrix[i][jj]);
-        }
-        // console.log('Elements by block');
-        for (let ii = r; ii < r + 3; ii++) {
-          for (let jj = c; jj < c + 3; jj++) {
-            set[i][j].add(matrix[ii][jj]); //добавляем в множество все элементы блока
-            // console.log(matrix[ii][jj]);
+    /**
+     * Инициализация рабочего массива
+     *
+     * Рабочий массив представляет собой матрицу 9х9, каждый элемент которой
+     * является списком из трех элементов: число, тип элемента (in - заполнен
+     * по услвоию, unknown - решение не найдено, solved - решено) и перечень
+     * предполагаемых значений элемента.
+     */
+    function initSolved(arr) {
+      steps = 0;
+      let suggest = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      for (let i = 0; i < 9; i++) {
+        solved[i] = [];
+        for (let j = 0; j < 9; j++) {
+          if (arr[i][j]) {
+            solved[i][j] = [arr[i][j], 'in', []];
+          }
+          else {
+            solved[i][j] = [0, 'unknown', suggest];
           }
         }
       }
-    }
-  }
+    }; // end of method initSolved()
 
-  //
-  function isExists(value, row, column) {
-    //вычисляем координаты левого верхнего угла блока, куда входит элемент matrix[row][column]
-    let r = Math.floor(row / 3) * 3;
-    let c = Math.floor(column / 3) * 3;
 
-    //проверяем элементы в строке
-    for (let i = 0; i < 9; i++) {
-      if (matrix[i][column] == value) return true;
-    }
+    /**
+     * Решение судоку
+     *
+     * Метод в цикле пытается решить судоку, если на текущем этапе не изменилось
+     * ни одного элемента, то решение прекращается.
+     */
+    function solve() {
+      let changed = 0;
 
-    //проверяем элементы в столбце
-    for (let j = 0; j < 9; j++) {
-      if (matrix[row][j] == value) return true;
-    }
-
-    //проверяем элементы в блоке
-    for (let i = r; i < r + 3; i++) {
-      for (let j = c; j < c + 3; j++) {
-        if (matrix[i][j] == value) return true;
-      }
-    }
-    return false;
-  }
-
-  //createSet();
-
-  // for (let k = 0; k < 81; k++) {
-  //   let r = Math.floor(k / 9);
-  //   let c = (k % 9);
-  //   console.log(`k = ${k}  r = ${r}  c = ${c}`);
-  // }
-  //=============================================================//
-  function rec(k) {
-    if (k == 81) return true; //если достигли конца матрицы
-
-    //вычисляем координаты элемента в матрице в зависимости от k
-    let r = Math.floor(k / 9);
-    let c = (k % 9);
-
-    if (matrix[r][c] > 0) {
-      rec(k + 1); //если элемент уже задан 
-    } else {
-      for (i = 1; i <= 9; i++) {
-        let q = true;
-        if (isExists(i, r, c)) {
-          q = false;
+      do {
+        // сужаем множество значений для всех нерешенных чисел
+        changed = updateSuggests();
+        steps++;
+        if (81 < steps) {
+          // Зашита от цикла
+          break;
         }
+      } while (changed);
 
-        if (q) {
-          matrix[r][c] = i;
-          rec(k + 1);
+      if (!isSolved() && !isFailed()) {
+        // используем поиск с возвратом
+        backtracking();
+      }
+
+    }; // end of method solve()
+
+
+    /**
+     * Обновляем множество предположений
+     *
+     * Проверяем основные правила -- уникальность в строке, столбце и секции.
+     */
+    function updateSuggests() {
+      let changed = 0;
+      let buf = arrayDiff(solved[1][3][2], rowContent(1));
+      buf = arrayDiff(buf, colContent(3));
+      buf = arrayDiff(buf, sectContent(1, 3));
+      for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+          if ('unknown' != solved[i][j][1]) {
+            // Здесь решение либо найдено, либо задано
+            continue;
+          }
+
+          // "Одиночка"
+          changed += solveSingle(i, j);
+
+          // "Скрытый одиночка"
+          changed += solveHiddenSingle(i, j);
         }
       }
-     // matrix[r][c] = 0;
-    }
-  }
-
-  rec(0);
-  //console.log(isExists(9,0,3));
-
-  console.log("Matrix after\n", matrix);
-}
-
-const initial = [
-  [0, 0, 0, 9, 7, 0, 0, 0, 2],
-  [9, 0, 5, 0, 0, 0, 0, 6, 0],
-  [0, 3, 0, 0, 0, 1, 9, 5, 0],
-  [0, 9, 0, 0, 0, 4, 2, 0, 3],
-  [6, 0, 4, 2, 0, 0, 0, 9, 0],
-  [3, 2, 1, 7, 0, 8, 6, 0, 0],
-  [0, 0, 0, 0, 0, 0, 3, 2, 6],
-  [2, 6, 0, 0, 0, 0, 1, 0, 4],
-  [0, 0, 0, 0, 2, 6, 5, 0, 0]
-];
-const copy = initial.map(r => [...r]);
-//isSolved(initial, solveSudoku(copy)); true
-solveSudoku(copy);
+      return changed;
+    }; // end of methos updateSuggests()
 
 
-function isSolved(initial, sudoku) {
-  for (let i = 0; i < 9; i++) {
-    let [r, c] = [Math.floor(i / 3) * 3, (i % 3) * 3];
-    //console.log(`r = ${r}  c = ${c}`);
-    if (
-      (sudoku[i].reduce((s, v) => s.add(v), new Set()).size != 9) ||
-      (sudoku.reduce((s, v) => s.add(v[i]), new Set()).size != 9) ||
-      (sudoku.slice(r, r + 3).reduce((s, v) => v.slice(c, c + 3).reduce((s, v) => s.add(v), s), new Set()).size != 9)
-    ) return false;
-  }
-  return initial.every((row, rowIndex) => {
-    return row.every((num, colIndex) => {
-      let cell = sudoku[rowIndex][colIndex]
-      return Number.isInteger(cell) && (num === 0 || cell === num);
-    });
-  });
+    /**
+     * Метод "Одиночка"
+     */
+    function solveSingle(i, j) {
+      solved[i][j][2] = arrayDiff(solved[i][j][2], rowContent(i));
+      solved[i][j][2] = arrayDiff(solved[i][j][2], colContent(j));
+      solved[i][j][2] = arrayDiff(solved[i][j][2], sectContent(i, j));
+      if (1 == solved[i][j][2].length) {
+        // Исключили все варианты кроме одного
+        markSolved(i, j, solved[i][j][2][0]);
+        return 1;
+      }
+      return 0;
+    }; // end of method solveSingle()
+
+
+    /**
+     * Метод "Скрытый одиночка"
+     */
+    function solveHiddenSingle(i, j) {
+      var lessSuggest = lessRowSuggest(i, j);
+      let changed = 0;
+      if (1 == lessSuggest.length) {
+        markSolved(i, j, lessSuggest[0]);
+        changed++;
+      }
+      var lessSuggest = lessColSuggest(i, j);
+      if (1 == lessSuggest.length) {
+        markSolved(i, j, lessSuggest[0]);
+        changed++;
+      }
+      var lessSuggest = lessSectSuggest(i, j);
+      if (1 == lessSuggest.length) {
+        markSolved(i, j, lessSuggest[0]);
+        changed++;
+      }
+      return changed;
+    }; // end of method solveHiddenSingle()
+
+
+    /**
+     * Отмечаем найденный элемент
+     */
+    function markSolved(i, j, solve) {
+      solved[i][j][0] = solve;
+      solved[i][j][1] = 'solved';
+    }; // end of method markSolved()
+
+
+    /**
+     * Содержимое строки
+     */
+    function rowContent(i) {
+      let content = [];
+      for (let j = 0; j < 9; j++) {
+        if ('unknown' != solved[i][j][1]) {
+          content[content.length] = solved[i][j][0];
+        }
+      }
+      return content;
+    }; // end of method rowContent()
+
+
+    /**
+     * Содержимое столбца
+     */
+    function colContent(j) {
+      let content = [];
+      for (let i = 0; i < 9; i++) {
+        if ('unknown' != solved[i][j][1]) {
+          content[content.length] = solved[i][j][0];
+        }
+      }
+      return content;
+    }; // end of method colContent()
+
+
+    /**
+     * Содержимое секции
+     */
+    function sectContent(i, j) {
+      let content = [];
+      let offset = sectOffset(i, j);
+      for (let k = 0; k < 3; k++) {
+        for (let l = 0; l < 3; l++) {
+          if ('unknown' != solved[offset.i + k][offset.j + l][1]) {
+            content[content.length] = solved[offset.i + k][offset.j + l][0];
+          }
+        }
+      }
+      return content;
+    }; // end of method sectContent()
+
+
+    /**
+     * Минимизированное множество предположений по строке
+     */
+    function lessRowSuggest(i, j) {
+      var lessSuggest = solved[i][j][2];
+      for (let k = 0; k < 9; k++) {
+        if (k == j || 'unknown' != solved[i][k][1]) {
+          continue;
+        }
+        lessSuggest = arrayDiff(lessSuggest, solved[i][k][2]);
+      }
+      return lessSuggest;
+    }; // end of method lessRowSuggest()
+
+
+    /**
+     * Минимизированное множество предположений по столбцу
+     */
+    function lessColSuggest(i, j) {
+      var lessSuggest = solved[i][j][2];
+      for (let k = 0; k < 9; k++) {
+        if (k == i || 'unknown' != solved[k][j][1]) {
+          continue;
+        }
+        lessSuggest = arrayDiff(lessSuggest, solved[k][j][2]);
+      }
+      return lessSuggest;
+    }; // end of method lessColSuggest()
+
+
+    /**
+     * Минимизированное множество предположений по секции
+     */
+    function lessSectSuggest(i, j) {
+      var lessSuggest = solved[i][j][2];
+      let offset = sectOffset(i, j);
+      for (let k = 0; k < 3; k++) {
+        for (let l = 0; l < 3; l++) {
+          if (((offset.i + k) == i && (offset.j + l) == j) || 'unknown' != solved[offset.i + k][offset.j + l][1]) {
+            continue;
+          }
+          lessSuggest = arrayDiff(lessSuggest, solved[offset.i + k][offset.j + l][2]);
+        }
+      }
+      return lessSuggest;
+    }; // end of method lessSectSuggest()
+
+
+    /**
+     * Вычисление разницы между двумя массивами
+     */
+    function arrayDiff(arr1, arr2) {
+      let arr_diff = [];
+      for (let i = 0; i < arr1.length; i++) {
+        let is_found = false;
+        for (let j = 0; j < arr2.length; j++) {
+          if (arr1[i] == arr2[j]) {
+            is_found = true;
+            break;
+          }
+        }
+        if (!is_found) {
+          arr_diff[arr_diff.length] = arr1[i];
+        }
+      }
+      return arr_diff;
+    }; // end of method arrayDiff()
+
+    /**
+     * Расчет смещения секции
+     */
+    function sectOffset(i, j) {
+      return {
+        j: Math.floor(j / 3) * 3,
+        i: Math.floor(i / 3) * 3
+      };
+    }; // end of method sectOffset()
+
+
+    /**
+     * Вывод найденного решения
+     */
+    this.output = function () {
+      
+      for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+          matrix[i][j] = solved[i][j][0];
+        }
+      }
+      return matrix;
+    }; // end of method ()
+
+
+    /**
+     * Проверка на найденное решение
+     */
+    function isSolved() {
+      let is_solved = true;
+      for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+          if ('unknown' == solved[i][j][1]) {
+            is_solved = false;
+          }
+        }
+      }
+      return is_solved;
+    }; // end of method isSolved()
+
+
+    /**
+     * Публичный метод isSolved
+     */
+    this.isSolved = function () {
+      return isSolved();
+    }; // end of public method isSolved()
+
+
+    /**
+     * Есть ли ошибка в поиске решения
+     *
+     * Возвращает true, если хотя бы у одной из ненайденных ячеек
+     * отсутствуют кандидаты
+     */
+    function isFailed() {
+      let is_failed = false;
+      for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+          if ('unknown' == solved[i][j][1] && !solved[i][j][2].length) {
+            is_failed = true;
+          }
+        }
+      }
+      return is_failed;
+    }; // end of method isFailed()
+
+
+    /**
+     * Публичный метод isFailed
+     */
+    this.isFailed = function () {
+      return isFailed();
+    }; // end of public method isFailed()
+
+
+    /**
+     * Мпетод поиска с возвратом
+     */
+    function backtracking() {
+      backtracking_call++;
+      // Формируем новый массив
+      let arr = [[], [], [], [], [], [], [], [], []];
+      let i_min = -1, j_min = -1, suggests_cnt = 0;
+      for (let i = 0; i < 9; i++) {
+        arr[i].length = 9;
+        for (let j = 0; j < 9; j++) {
+          arr[i][j] = solved[i][j][0];
+          if ('unknown' == solved[i][j][1] && (solved[i][j][2].length < suggests_cnt || !suggests_cnt)) {
+            suggests_cnt = solved[i][j][2].length;
+            i_min = i;
+            j_min = j;
+          }
+        }
+      }
+
+      // проходим по всем элементам, находим нерешенные,
+      // выбираем кандидата и пытаемся решить
+      for (let k = 0; k < suggests_cnt; k++) {
+        arr[i_min][j_min] = solved[i_min][j_min][2][k];
+        // инициируем новый цикл
+        let sudoku = new Sudoku(arr);
+        if (sudoku.isSolved()) {
+          // нашли решение
+          out_val = sudoku.solved();
+          // Записываем найденное решение
+          for (let i = 0; i < 9; i++) {
+            for (let j = 0; j < 9; j++) {
+              if ('unknown' == solved[i][j][1]) {
+                markSolved(i, j, out_val[i][j][0])
+              }
+            }
+          }
+          return;
+        }
+      }
+    }; // end of function backtracking)(
+
+
+    /**
+     * Возвращает найденное решение
+     */
+    this.solved = function () {
+      return solved;
+    }; // end of solved()
+  }; // end of class sudoku()
+
+  //создаём объект и выводим результат
+  let sudoku = new Sudoku(matrix);
+  return sudoku.output();
 }
